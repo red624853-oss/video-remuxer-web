@@ -3,89 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Offline Video Remuxer</title>
-    <link rel="manifest" href="manifest.json">
-    <style>
-        /* Add some basic styling */
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f3f3f3;
-        }
-        .container {
-            width: 90%;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        h1 {
-            text-align: center;
-        }
-        input[type="file"] {
-            margin: 10px 0;
-        }
-    </style>
+    <title>Video Remuxer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@latest"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Offline Video Remuxer</h1>
-        <input type="file" id="videoInput" accept="video/*" multiple>
-        <input type="file" id="subtitleInput" accept="text/vtt, text/srt" multiple>
-        <button id="remuxButton">Remux Videos</button>
-        <div id="progress"></div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/gh/BishopFox/ffmpeg.js/ffmpeg.min.js"></script>
+    <h1>Video Remuxer</h1>
+    <input type="file" id="videoInput" accept="video/*">
+    <button id="remuxButton">Remux Video</button>
+    <video id="videoPreview" controls></video>
     <script>
-        const videoInput = document.getElementById('videoInput');
-        const subtitleInput = document.getElementById('subtitleInput');
-        const remuxButton = document.getElementById('remuxButton');
-        const progressDiv = document.getElementById('progress');
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        const ffmpeg = createFFmpeg({ log: true });
 
-        remuxButton.addEventListener('click', async () => {
-            const videos = Array.from(videoInput.files);
-            const subtitles = Array.from(subtitleInput.files);
-            let totalFiles = videos.length;
-            let processedFiles = 0;
-
-            for (const videoFile of videos) {
-                const outputFileName = videoFile.name.replace(/\.[^/.]+$/, "");
-                progressDiv.innerHTML += `<p>Processing ${videoFile.name}...</p>`;
-                const ffmpeg = FFmpeg.createFFmpeg({ log: true });
-                await ffmpeg.load();
-                ffmpeg.FS('writeFile', videoFile.name, await fetchFile(videoFile));
-
-                if (subtitles.length > 0) {
-                    subtitles.forEach(subFile => {
-                        ffmpeg.FS('writeFile', subFile.name, await fetchFile(subFile));
-                    });
-                    await ffmpeg.run('concat', ...subtitles.map(subFile => subFile.name), videoFile.name, `${outputFileName}.mp4`);
-                } else {
-                    await ffmpeg.run('remux', videoFile.name, `${outputFileName}.mp4`);
-                }
-
-                const data = ffmpeg.FS('readFile', `${outputFileName}.mp4`);
-                const blob = new Blob([data.buffer], { type: 'video/mp4' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${outputFileName}.mp4`;
-                document.body.appendChild(a);
-                a.click();
-                processedFiles++;
-                progressDiv.innerHTML += `<p>Finished ${videoFile.name}.</p>`;
-                progressDiv.innerHTML += `<p>${Math.round((processedFiles / totalFiles) * 100)}% Done.</p>`;
+        document.getElementById('remuxButton').onclick = async () => {
+            const fileInput = document.getElementById('videoInput');
+            if (fileInput.files.length === 0) {
+                alert("Please upload a video file.");
+                return;
             }
-        });
 
-        async function fetchFile(file) {
-            const response = await fetch(URL.createObjectURL(file));
-            return response.arrayBuffer();
-        }
+            const file = fileInput.files[0];
+            const fileName = file.name;
+            const outputFileName = fileName.split('.').slice(0, -1).join('.') + '-remuxed.mp4';
+
+            // Load FFmpeg
+            if (!ffmpeg.isLoaded()) {
+                await ffmpeg.load();
+            }
+
+            // Write the file to FFmpeg's filesystem
+            ffmpeg.FS('writeFile', fileName, await fetchFile(file));
+
+            // Remux the video to mp4 format
+            await ffmpeg.run('-i', fileName, outputFileName);
+
+            // Read the remuxed file from FFmpeg's filesystem
+            const data = ffmpeg.FS('readFile', outputFileName);
+
+            // Create a Blob URL for the output file
+            const videoUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+
+            // Update the video preview source
+            const videoPreview = document.getElementById('videoPreview');
+            videoPreview.src = videoUrl;
+            videoPreview.load();
+            videoPreview.play();
+        };
     </script>
 </body>
 </html>
